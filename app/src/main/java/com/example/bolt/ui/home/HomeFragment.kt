@@ -1,0 +1,365 @@
+package com.example.bolt.ui.home
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.IntentSender
+import android.location.Location
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import android.view.View
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import com.example.bolt.BaseApplication
+import com.example.greentaxi.BuildConfig
+import com.example.greentaxi.R
+import com.example.greentaxi.databinding.FragmentHomeBinding
+import com.example.bolt.other.Constants.REQUEST_CHECK_SETTINGS
+import com.example.bolt.other.Constants.REQUEST_CODE_LOCATION_PERMISSION
+import com.example.bolt.other.TrackingUtility
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.common.api.Status
+import com.google.android.gms.location.*
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.tasks.Task
+import com.google.android.libraries.places.api.Places
+import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.widget.AutocompleteSupportFragment
+import com.google.android.libraries.places.widget.listener.PlaceSelectionListener
+import com.maxkeppeler.sheets.options.Option
+import com.maxkeppeler.sheets.options.OptionsSheet
+import dagger.hilt.android.AndroidEntryPoint
+import pub.devrel.easypermissions.AppSettingsDialog
+import pub.devrel.easypermissions.EasyPermissions
+import javax.inject.Inject
+
+
+@AndroidEntryPoint
+class HomeFragment : Fragment(R.layout.fragment_home), EasyPermissions.PermissionCallbacks {
+    private val viewModel by viewModels<HomeViewModel>()
+
+    //view binding
+    private var _binding: FragmentHomeBinding? = null
+    private val binding get() = _binding!!
+
+    //userLocation
+    private var userLocation: LatLng? = null
+
+    //user destination location
+    private var userDestinationLocation: LatLng? = null
+
+    //google map
+    private var map: GoogleMap? = null
+
+    // fused location
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+
+
+    //activity context
+    @Inject
+    lateinit var app: BaseApplication
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        Places.initialize(app, BuildConfig.GMP_key)
+
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        _binding = FragmentHomeBinding.bind(view)
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(app)
+
+
+        manageView()
+
+        userLocation()
+
+        binding.mapView.onCreate(savedInstanceState)
+        binding.mapView.getMapAsync {
+            Log.d("map view", "map view")
+            map = it
+        }
+
+
+        val autocompleteSupportFragment =
+            childFragmentManager.findFragmentById(R.id.autocomplete_fragment) as AutocompleteSupportFragment
+
+        autocompleteSupportFragment.setPlaceFields(listOf(Place.Field.ID, Place.Field.NAME))
+
+        // Set up a PlaceSelectionListener to handle the response.
+        autocompleteSupportFragment.setOnPlaceSelectedListener(object : PlaceSelectionListener {
+            override fun onPlaceSelected(place: Place) {
+
+                Log.i("user autocomplete", "Place: ${place.name}, ${place.id}")
+                userDestinationLocation = place.latLng
+
+                userLocation?.let { startingLocation ->
+                    userDestinationLocation?.let { endLocation ->
+                        viewModel.userLocation = startingLocation
+                        viewModel.searchedLatLng = endLocation
+                        OptionsSheet().show(requireActivity()) {
+                            title("Select Taxi")
+                            with(
+                                Option(
+                                    R.drawable.ic_taxi,
+                                    "Sharing $${viewModel.generateRandomNumber(0, 5)}"
+                                ),
+                                Option(
+                                    R.drawable.ic_taxi,
+                                    "Mini $${viewModel.generateRandomNumber(6, 15)}"
+                                ),
+                                Option(
+                                    R.drawable.ic_taxi,
+                                    "Sedan $${viewModel.generateRandomNumber(16, 30)}"
+                                )
+                            )
+
+                            onPositive { index: Int, option: Option ->
+                                viewModel.drawPolyLine(map)
+                            }
+                        }
+
+                    }
+                }
+
+            }
+
+            override fun onError(status: Status) {
+                Log.i("usercompleteerror", "error generated by user")
+                Log.i("usercompleteerror", "An error occurred: $status")
+            }
+        })
+
+
+
+        binding.bottomsheetbtn.setOnClickListener {
+            OptionsSheet().show(requireActivity()) {
+                title("Select Taxi")
+                with(
+                    Option(
+                        R.drawable.ic_taxi,
+                        "Sharing $${viewModel.generateRandomNumber(0, 5)}"
+                    ),
+                    Option(
+                        R.drawable.ic_taxi,
+                        "Mini $${viewModel.generateRandomNumber(6, 15)}"
+                    ),
+                    Option(
+                        R.drawable.ic_taxi,
+                        "Sedan $${viewModel.generateRandomNumber(16, 30)}"
+                    )
+                )
+
+                onPositive { index: Int, option: Option ->
+                    viewModel.drawPolyLine(map)
+                }
+            }
+        }
+    }
+
+
+    //manageView according to permissions
+    private fun manageView() {
+        if (TrackingUtility.hasLocationPermissions(app)) {
+            binding.homeScreenLayout.visibility = View.VISIBLE
+            binding.progressCircular.visibility = View.GONE
+            binding.askPermission.visibility = View.GONE
+
+        } else {
+            binding.homeScreenLayout.visibility = View.GONE
+            binding.progressCircular.visibility = View.GONE
+            binding.askPermission.visibility = View.VISIBLE
+            requestPermission()
+        }
+    }
+
+    // location permission
+    private fun requestPermission() {
+        if (TrackingUtility.hasLocationPermissions(app)) {
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            EasyPermissions.requestPermissions(
+                this,
+                "You need to accept this permission to use the app",
+                REQUEST_CODE_LOCATION_PERMISSION,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        } else {
+            EasyPermissions.requestPermissions(
+                this,
+                "You need to accept this permission to use the app",
+                REQUEST_CODE_LOCATION_PERMISSION,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            )
+        }
+
+
+    }
+
+    override fun onPermissionsGranted(requestCode: Int, perms: MutableList<String>) {
+        manageView()
+        userLocation()
+    }
+
+    override fun onPermissionsDenied(requestCode: Int, perms: MutableList<String>) {
+        if (EasyPermissions.somePermissionPermanentlyDenied(this, perms)) {
+            //permission permanently denied
+            AppSettingsDialog.Builder(this).build().show()
+        } else {
+            //not permanently denied or denied once
+            requestPermission()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this)
+    }
+
+    //fused location
+    @SuppressLint("MissingPermission")
+    private fun userLocation() {
+
+        fusedLocationClient.lastLocation
+            .addOnSuccessListener { location: Location? ->
+                // Got last known location. In some rare situations this can be null.
+                if (location != null) {
+                    val updatedLocation: LatLng = LatLng(
+
+                        location.latitude,
+                        location.longitude
+                    )
+                    userLocation = updatedLocation
+
+                    viewModel.addMapMarker(map, updatedLocation)
+                    Log.d("user marker", updatedLocation.toString())
+
+                    // Zoom in, animating the camera.
+                    map?.animateCamera(CameraUpdateFactory.zoomIn());
+                } else {
+                    println("user location is : $location")
+                    Log.d("user location is ", "null (from else)")
+                    createLocationRequest()
+                }
+
+            }
+    }
+
+    //receive location update
+    private fun createLocationRequest() {
+        val locationRequest = LocationRequest.create()?.apply {
+            interval = 10000
+            fastestInterval = 5000
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        }
+        //get current location settings
+        val builder = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+
+        // check whether the current location settings are satisfied
+        val client: SettingsClient = LocationServices.getSettingsClient(app)
+        val task: Task<LocationSettingsResponse> = client.checkLocationSettings(builder.build())
+
+        println("user permission request !!")
+        //prompt user to change settings
+        task.addOnSuccessListener { locationSettingsResponse ->
+            println("user accepted all permission")
+        }
+
+        task.addOnFailureListener { exception ->
+            if (exception is ResolvableApiException) {
+                // Location settings are not satisfied, but this can be fixed
+                // by showing the user a dialog.
+                try {
+
+                    startIntentSenderForResult(
+                        exception.getResolution().getIntentSender(),
+                        REQUEST_CHECK_SETTINGS, null, 0, 0, 0, null
+                    )
+
+                    //manual update of location
+                    locationUpdate()
+
+                } catch (sendEx: IntentSender.SendIntentException) {
+                    // Ignore the error.
+                }
+
+
+            }
+        }
+    }
+
+    //location update
+    private fun locationUpdate() {
+        Log.d("user manual update", "user location manual update")
+//        val locationRequest = LocationRequest.create()?.apply {
+//            interval = 10000
+//            fastestInterval = 5000
+//            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+//        }
+//        val locationCallback: LocationCallback = object : LocationCallback() {
+//            override fun onLocationAvailability(p0: LocationAvailability) {
+//                super.onLocationAvailability(p0)
+//            }
+//
+//            override fun onLocationResult(p0: LocationResult) {
+//                super.onLocationResult(p0)
+//            }
+//
+//        }
+//        fusedLocationClient.requestLocationUpdates(
+//
+//        )
+
+        viewModel.addMapMarker(map,LatLng(21.8089308483, 79.90230327371))
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+        binding.mapView?.onResume()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        binding.mapView?.onStart()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        binding.mapView?.onStop()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        binding.mapView?.onPause()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        binding.mapView?.onLowMemory()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        binding.mapView?.onSaveInstanceState(outState)
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+}

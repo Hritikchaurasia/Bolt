@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <LinearLayout
+        android:id="@+id/progress_circular"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:gravity="center"
+        >
+        <ProgressBar
+
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+
+            />
+    </LinearLayout>
+    <LinearLayout
+        android:id="@+id/ask_permission"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:gravity="center"
+        >
+        <TextView
+
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="Please allow location permission to use app"
+            android:textSize="24sp"
+            android:textAlignment="center"
+            />
+    </LinearLayout>
+  <LinearLayout
+      android:id="@+id/home_screen_layout"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:visibility="visible"
+
+
+      android:paddingTop="8dp"
+      >
+
+      <fragment android:id="@+id/autocomplete_fragment"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:name="com.google.android.libraries.places.widget.AutocompleteSupportFragment"
+
+          />
+      <Space
+          android:layout_width="match_parent"
+          android:layout_height="15dp"/>
+      <Button
+          android:id="@+id/bottomsheetbtn"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:text="show bottom sheet"
+          android:layout_gravity="center"
+          />
+      <Space
+          android:layout_width="match_parent"
+          android:layout_height="15dp"/>
+      <com.google.android.gms.maps.MapView
+          android:id="@+id/mapView"
+          android:layout_width="match_parent"
+          android:layout_height="0dp"
+          android:layout_weight="1.5"
+          />
+
+
+
+  </LinearLayout>
+</LinearLayout>

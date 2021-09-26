@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Bolt</string>
+    <string name="please_enter_your_mobile_number_with_country_code_will_send_you_a_code_to_verify_your_mobile_number">Please enter your mobile number with country code,will send you a code to verify your mobile number</string>
+    <string name="login">Login</string>
+    <string name="phone_number_hint_text">Phone number with country code</string>
+
+</resources>
